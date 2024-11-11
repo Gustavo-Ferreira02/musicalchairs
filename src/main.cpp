@@ -45,18 +45,32 @@ public:
 
     void iniciar_rodada() {
         // TODO: Inicia uma nova rodada, removendo uma cadeira e ressincronizando o semáforo
+
+        musica_parada = false;
+        std::cout << "Nova rodada iniciada com " << cadeiras << " cadeiras" << " e " << cadeiras+1 << " jogadores" << std::endl;
+        cadeiras--;
+        std::counting_semaphore<NUM_JOGADORES> cadeira_sem(cadeiras);
     }
 
     void parar_musica() {
         // TODO: Simula o momento em que a música para e notifica os jogadores via variável de condição
+        std::lock_guard<std::mutex> lock(music_mutex);
+        musica_parada = true;
+        music_cv.notify_all();
+        std::cout << "Música parou!" << std::endl;
     }
+
 
     void eliminar_jogador(int jogador_id) {
         // TODO: Elimina um jogador que não conseguiu uma cadeira
+        std::cout << "Jogador " << jogador_id << " foi eliminado!" << std::endl;
+        num_jogadores--;
+        if (num_jogadores <= 1) jogo_ativo = false;
     }
 
     void exibir_estado() {
         // TODO: Exibe o estado atual das cadeiras e dos jogadores
+        std::cout << "Estado atual: " << num_jogadores << " jogadores, " << cadeiras << " cadeiras restantes." << std::endl;
     }
 
 private:
@@ -67,14 +81,25 @@ private:
 class Jogador {
 public:
     Jogador(int id, JogoDasCadeiras& jogo)
-        : id(id), jogo(jogo) {}
+        : id(id), jogo(jogo), eliminado(false) {}
 
     void tentar_ocupar_cadeira() {
         // TODO: Tenta ocupar uma cadeira utilizando o semáforo contador quando a música para (aguarda pela variável de condição)
+        std::unique_lock<std::mutex> lock(music_mutex);
+        music_cv.wait(lock, [] { return musica_parada.load(); });
+
+        if (cadeira_sem.try_acquire()) {
+            std::cout << "Jogador " << id << " conseguiu uma cadeira!" << std::endl;
+        } else {
+            eliminado = true;
+        }
     }
 
     void verificar_eliminacao() {
         // TODO: Verifica se foi eliminado após ser destravado do semáforo
+        if (eliminado) {
+            jogo.eliminar_jogador(id);
+        }
     }
 
     void joga() {
@@ -84,12 +109,18 @@ public:
 
         
         // TODO: Verifica se foi eliminado
+        while (jogo_ativo.load()) {
+            tentar_ocupar_cadeira();
+            verificar_eliminacao();
+            if (eliminado) break;
+        }
 
     }
 
 private:
     int id;
     JogoDasCadeiras& jogo;
+    bool eliminado;
 };
 
 class Coordenador {
@@ -99,6 +130,17 @@ public:
 
     void iniciar_jogo() {
         // TODO: Começa o jogo, dorme por um período aleatório, e então para a música, sinalizando os jogadores 
+        while (jogo_ativo) {
+            jogo.iniciar_rodada();
+            std::this_thread::sleep_for(std::chrono::milliseconds(rand() % 3000 + 1000));
+            jogo.parar_musica();
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            liberar_threads_eliminadas();
+            if (NUM_JOGADORES <= 1) {
+                jogo_ativo = false;
+            }
+        } 
     }
 
     void liberar_threads_eliminadas() {
