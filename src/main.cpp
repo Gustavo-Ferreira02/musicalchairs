@@ -62,7 +62,13 @@ public:
     }
 
     void eliminar_jogador(int id) {
-        std::cout << "Jogador " << id << " foi eliminado!\n";
+        if (!jogo_ativo)
+        {
+            std::cout << "Jogador " << id << " venceu!\n";
+            return;
+        }
+        std::cout << "Jogador " << id << " foi eliminado!" << std::endl;
+        std::cout << std::endl;
     }
 };
 
@@ -128,8 +134,7 @@ public:
 
         // Finaliza o jogo ao término de todas as rodadas
         jogo_ativo = false;
-        
-        //music_cv.notify_all();  // Notifica todos para terminar
+        music_cv.notify_all();  // Notifica todos para terminar
     }
 };
 
